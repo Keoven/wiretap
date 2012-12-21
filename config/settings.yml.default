@@ -1,0 +1,29 @@
+# This configuration is primarily used for OpenStack
+#
+:admin_port: 2666
+:default_remote_host: 'hostname'
+:default_tunnel_username: username
+:custom_headers_mapping:
+  HTTP_X_AUTH_TOKEN: 'X-AUTH-Token'
+:ignore_caching_string: 'ignore_awful_caching'
+:proxy_servers:
+  :identity_admin:
+    :listen_port: 35357
+    :tunnel_port: 35358
+    :remote_port: 35357
+  :identity_public:
+    :listen_port: 5000
+    :tunnel_port: 5001
+    :remote_port: 5000
+  :volume:
+    :listen_port: 8776
+    :tunnel_port: 8777
+    :remote_port: 8776
+  :image:
+    :listen_port: 9292
+    :tunnel_port: 9293
+    :remote_port: 9292
+  :compute:
+    :listen_port: 8774
+    :tunnel_port: 8775
+    :remote_port: 8774

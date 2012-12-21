@@ -1,0 +1,33 @@
+#! /usr/bin/env ruby
+
+require 'rubygems'
+require 'bundler/setup'
+require 'json'
+
+root_path = File.expand_path(File.join('..', '..'), __FILE__)
+
+settings_path = File.join(root_path, 'config', 'settings.yml')
+settings_contents = File.read(settings_path)
+settings = YAML.load(settings_contents)
+
+admin_process = Process.spawn({'PORT' => settings[:admin_port].to_s},
+              %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'admin.rb')}|)
+
+proxies = Array.new
+proxies = settings[:proxy_servers].map do |name, proxy_settings|
+  Process.spawn({
+    'LISTEN_PORT' => proxy_settings[:listen_port].to_s,
+    'TUNNEL_PORT' => proxy_settings[:tunnel_port].to_s,
+    'REMOTE_PORT' => proxy_settings[:remote_port].to_s,
+    'REMOTE_HOST' => (proxy_settings[:remote_host] || settings[:default_remote_host]).to_s,
+    'TUNNEL_USERNAME' => proxy_settings[:tunnel_username] || settings[:default_tunnel_username],
+    'CUSTOM_HEADERS_MAPPING' => settings[:custom_headers_mapping].to_json,
+    'IGNORE_CACHING_STRING'  => settings[:ignore_caching_string]
+  }, %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'proxy.rb')}|)
+end
+
+loop {}
+at_exit do
+  Process.kill(0, admin_process)
+  proxies.each {|pid| Process.kill(0, pid)}
+end
