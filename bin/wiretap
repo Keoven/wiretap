@@ -10,12 +10,24 @@ settings_path = File.join(root_path, 'config', 'settings.yml')
 settings_contents = File.read(settings_path)
 settings = YAML.load(settings_contents)
 
+@readers = {}
+@writers = {}
+@process_names = {}
+
+reader, writer = IO.pipe('BINARY')
 admin_process = Process.spawn({'PORT' => settings[:admin_port].to_s},
-              %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'admin.rb')}|)
+              %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'admin.rb')}|,
+              out: writer,
+              err: writer)
+@readers[admin_process] = reader
+@writers[admin_process] = writer
+@process_names[admin_process] = 'ADMIN'
+
 
 proxies = Array.new
 proxies = settings[:proxy_servers].map do |name, proxy_settings|
-  Process.spawn({
+  reader, writer = IO.pipe('BINARY')
+  pid = Process.spawn({
     'LISTEN_PORT' => proxy_settings[:listen_port].to_s,
     'TUNNEL_PORT' => proxy_settings[:tunnel_port].to_s,
     'REMOTE_PORT' => proxy_settings[:remote_port].to_s,
@@ -23,10 +35,25 @@ proxies = settings[:proxy_servers].map do |name, proxy_settings|
     'TUNNEL_USERNAME' => proxy_settings[:tunnel_username] || settings[:default_tunnel_username],
     'CUSTOM_HEADERS_MAPPING' => settings[:custom_headers_mapping].to_json,
     'IGNORE_CACHING_STRING'  => settings[:ignore_caching_string]
-  }, %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'proxy.rb')}|)
+  }, %Q|bundle exec ruby #{File.join(root_path, 'lib', 'wiretap', 'proxy.rb')}|,
+  out: writer,
+  err: writer)
+  @readers[pid] = reader
+  @writers[pid] = writer
+  @process_names[pid] = name
+  pid
 end
 
-loop {}
+loop do
+  io = IO.select(@readers.values, nil, nil, 30)
+  readers = io.nil? ? [] : io.first
+  readers.each do |r|
+    data = r.gets
+    pid = @readers.key(r)
+    puts "#{@process_names[pid]} | #{data}"
+  end
+end
+
 at_exit do
   Process.kill(0, admin_process)
   proxies.each {|pid| Process.kill(0, pid)}
